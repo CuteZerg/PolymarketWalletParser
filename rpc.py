@@ -27,7 +27,7 @@ ERC1155_BALANCE_ABI = [
 ]
 
 
-def create_web3_provider(rpc_url: str) -> AsyncWeb3:
+def create_async_web3(rpc_url: str) -> AsyncWeb3:
     return AsyncWeb3(AsyncHTTPProvider(rpc_url))
 
 
