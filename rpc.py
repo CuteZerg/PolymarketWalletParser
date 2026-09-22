@@ -1,3 +1,4 @@
+import aiohttp
 from web3 import AsyncWeb3
 from web3.middleware import ExtraDataToPOAMiddleware
 
@@ -26,9 +27,24 @@ ERC1155_BALANCE_ABI = [
     }
 ]
 
+ERC1155_BALANCE_OF_BATCH_ABI = [
+    {
+        "constant": True,
+        "inputs": [
+            {"name": "accounts", "type": "address[]"},
+            {"name": "ids", "type": "uint256[]"},
+        ],
+        "name": "balanceOfBatch",
+        "outputs": [{"name": "", "type": "uint256[]"}],
+        "stateMutability": "view",
+        "type": "function",
+    }
+]
+
 
 def create_async_web3(rpc_url: str) -> AsyncWeb3:
-    w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(rpc_url))
+    #w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(rpc_url))
+    w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(rpc_url, request_kwargs={"timeout": aiohttp.ClientTimeout(total=30)}))
     w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
     return w3
 
@@ -64,3 +80,18 @@ async def check_balance(
     else:
         contract = w3.eth.contract(address=checksum_contract, abi=ERC1155_BALANCE_ABI)
         return await contract.functions.balanceOf(checksum_wallet, token_id).call(block_identifier=block)
+
+
+async def check_balance_batch(
+    w3: AsyncWeb3,
+    contract_address: str,
+    wallet: str,
+    block: int,
+    token_ids: list[int],
+) -> list[int]:
+    checksum_contract = w3.to_checksum_address(contract_address)
+    checksum_wallet = w3.to_checksum_address(wallet)
+    accounts = [checksum_wallet] * len(token_ids)
+    
+    contract = w3.eth.contract(address=checksum_contract, abi=ERC1155_BALANCE_OF_BATCH_ABI)
+    return await contract.functions.balanceOfBatch(accounts, token_ids).call(block_identifier=block)
