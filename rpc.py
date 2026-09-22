@@ -1,5 +1,5 @@
 from web3 import AsyncWeb3
-from web3.providers.async_rpc import AsyncHTTPProvider
+from web3.middleware import ExtraDataToPOAMiddleware
 
 ERC20_BALANCE_ABI = [
     {
@@ -28,7 +28,9 @@ ERC1155_BALANCE_ABI = [
 
 
 def create_async_web3(rpc_url: str) -> AsyncWeb3:
-    return AsyncWeb3(AsyncHTTPProvider(rpc_url))
+    w3 = AsyncWeb3(AsyncWeb3.AsyncHTTPProvider(rpc_url))
+    w3.middleware_onion.inject(ExtraDataToPOAMiddleware, layer=0)
+    return w3
 
 
 async def fetch_logs_chunk(w3: AsyncWeb3, from_block: int, to_block: int, topics: list) -> list:
@@ -43,7 +45,7 @@ async def fetch_logs_chunk(w3: AsyncWeb3, from_block: int, to_block: int, topics
 
 
 async def get_latest_block_number(w3: AsyncWeb3) -> int:
-    return await w3.eth.get_block_number("latest")
+    return await w3.eth.get_block_number()
 
 
 async def check_balance(
