@@ -3,20 +3,29 @@ import asyncio
 import asyncpg
 from web3 import AsyncWeb3
 
-from config import CHUNK_SIZE, PADDED_WALLET_ADDRESS, RATE_LIMIT_DELAY, START_BLOCK
+from config import (
+    CHUNK_SIZE,
+    MAX_CONCURRENT_REQUESTS,
+    PADDED_WALLET_ADDRESS,
+    RATE_LIMIT_DELAY,
+    START_BLOCK,
+)
 from db import get_last_indexed_block, save_logs, update_last_indexed_block
 from rpc import fetch_logs_chunk
 
 
 async def run_indexer(w3: AsyncWeb3, pool: asyncpg.Pool, end_block: int):
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
     await asyncio.gather(
-        index_topic_slot(w3, pool, slot=1, end_block=end_block),
-        index_topic_slot(w3, pool, slot=2, end_block=end_block),
-        index_topic_slot(w3, pool, slot=3, end_block=end_block),
+        index_topic_slot(w3, pool, 1, end_block, semaphore),
+        index_topic_slot(w3, pool, 2, end_block, semaphore),
+        index_topic_slot(w3, pool, 3, end_block, semaphore),
     )
 
 
-async def index_topic_slot(w3: AsyncWeb3, pool: asyncpg.Pool, slot: int, end_block: int):
+async def index_topic_slot(w3: AsyncWeb3, pool: asyncpg.Pool, slot: int, end_block: int, semaphore: asyncio.Semaphore):
+    await asyncio.sleep(slot * (RATE_LIMIT_DELAY / 3))
+
     source_name = f"topic{slot}"
     current_block = await get_last_indexed_block(pool, source_name, START_BLOCK)
 
@@ -24,9 +33,13 @@ async def index_topic_slot(w3: AsyncWeb3, pool: asyncpg.Pool, slot: int, end_blo
     topics[slot] = PADDED_WALLET_ADDRESS
     while topics and topics[-1] is None:
         topics.pop()
+        
     while current_block < end_block:
         to_block = min(current_block + CHUNK_SIZE, end_block)
-        logs = await   fetch_logs_chunk(w3, current_block, to_block, topics)
+        
+        async with semaphore:
+            logs = await fetch_logs_chunk(w3, current_block, to_block, topics)
+            
         async with pool.acquire() as conn, conn.transaction():      
             await save_logs(conn, logs)
             await update_last_indexed_block(conn, source_name, to_block)
